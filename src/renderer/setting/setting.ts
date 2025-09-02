@@ -73,6 +73,7 @@ import type { IconType } from "../../iconTypes";
 import { defaultOcrId } from "../ocr/ocr";
 import { xget, xset } from "../../../lib/store/parse";
 import { isDeepStrictEqual } from "../lib/isDeepStrictEqual";
+import { safeJSONParse, tryD, tryx } from "../../../lib/utils";
 
 let yauzl: typeof import("yauzl") | null = null;
 
@@ -364,7 +365,7 @@ const s: Partial<settingItem<SettingPath>> = {
                 "快速截屏模式",
             ),
     },
-    "快速截屏.路径": { name: "快速截屏路径", el: () => xPath() },
+    "快速截屏.路径": { name: "快速截屏路径", el: () => xPath(true) },
     "连拍.数": {
         name: "单次连拍数量",
         el: () => xNumber("", { min: 2, max: 25 }),
@@ -570,14 +571,10 @@ const s: Partial<settingItem<SettingPath>> = {
                             }
                         })
                         .bindGet((el) => {
-                            try {
-                                return JSON.parse(el.value) as Record<
-                                    string,
-                                    unknown
-                                >;
-                            } catch (e) {
-                                return {};
-                            }
+                            return safeJSONParse<Record<string, unknown>>(
+                                el.value,
+                                {},
+                            );
                         })
                         .sv(item.config)
                         .style(textStyle(6));
@@ -2448,13 +2445,20 @@ const bindF2: { f: (has: boolean) => void; keys: SettingPath[] }[] = [
             "框选",
             "显示四角坐标",
             "框选后默认操作",
-            "框选",
             "快速截屏",
             "工具快捷键",
             "截屏编辑快捷键",
             "大小栏快捷键",
+            "其他快捷键",
             "全局",
             "字体",
+            "额外截屏器",
+            "广截屏",
+            "图像编辑.arrow",
+            "离线OCR",
+            "OCR.类型",
+            "以图搜图.引擎",
+            "鼠标快捷键",
         ],
     },
     {
@@ -2471,7 +2475,15 @@ const bindF2: { f: (has: boolean) => void; keys: SettingPath[] }[] = [
                     .style({ display: "" });
             else reloadEl.style({ display: "none" });
         },
-        keys: ["语言", "托盘", "保留截屏窗口", "dev", "硬件加速"],
+        keys: [
+            "语言",
+            "托盘",
+            "保留截屏窗口",
+            "dev",
+            "硬件加速",
+            "额外截屏器",
+            "更新.频率",
+        ],
     },
 ];
 
@@ -2484,13 +2496,10 @@ function getSettingMem() {
         "快捷键.截屏搜索.key",
         "语言.语言",
     ];
-    try {
-        return JSON.parse(
-            localStorage.getItem(settingMemKey) || "",
-        ) as SettingPath[];
-    } catch (error) {
-        return xs;
-    }
+    return safeJSONParse<SettingPath[]>(
+        localStorage.getItem(settingMemKey),
+        xs,
+    );
 }
 
 function getFromStore<t extends SettingPath>(
@@ -3021,7 +3030,7 @@ function xColor() {
         });
 }
 
-function xPath(dir = true) {
+function xPath(dir: boolean) {
     const el = view("x").class(Class.group).style({ width: baseWidth });
     const i = input();
     const b = button(iconEl("file"))
@@ -3564,11 +3573,13 @@ function translatorD(
                 {
                     name: "sysPrompt",
                     text: t("系统提示词，${t}为文字，${to}，${from}"),
+                    area: true,
                     optional: true,
                 },
                 {
                     name: "userPrompt",
                     text: t("用户提示词，${t}为文字，${to}，${from}"),
+                    area: true,
                     optional: true,
                 },
             ],
@@ -3579,10 +3590,16 @@ function translatorD(
             key: [
                 { name: "key" },
                 { name: "url", optional: true },
-                { name: "config", text: t("请求体自定义"), area: true },
+                {
+                    name: "config",
+                    text: t("请求体自定义"),
+                    area: true,
+                    type: "json",
+                },
                 {
                     name: "userPrompt",
                     text: t("用户提示词，${t}为文字，${to}，${from}"),
+                    area: true,
                     optional: true,
                 },
             ],
@@ -3600,7 +3617,7 @@ function translatorD(
     const idEl = input()
         .sv(v.name)
         .attr({ placeholder: t("请为翻译器命名") })
-        .style({ width: "240px" });
+        .style({ minWidth: 0 });
     const selectEl = select<Engines | "">(
         [{ value: "", name: "选择引擎类型" }].concat(
             // @ts-ignore
@@ -3676,9 +3693,22 @@ function translatorD(
         if (!ee) return null;
         const e = ee.key;
         for (const el of keys.queryAll("input, textarea")) {
-            const type = e.find((i) => i.name === el.el.dataset.key)?.type;
-            key[el.el.dataset?.key ?? ""] =
-                type === "json" ? JSON.parse(el.el.value) : el.el.value;
+            const name = el.el.dataset.key;
+            if (!name) continue;
+            const type = e.find((i) => i.name === name)?.type;
+            let value: object | string = el.el.value;
+            if (type === "json") {
+                if (value.trim() === "") value = {};
+                else {
+                    const [v, e] = tryx(() => JSON.parse(el.el.value));
+                    if (e) {
+                        alert(`${name} ${t("JSON格式错误")}`);
+                    } else {
+                        value = v;
+                    }
+                }
+            }
+            key[name] = value;
         }
         const nv: typeof v = {
             id: v.id,
@@ -3695,7 +3725,15 @@ function translatorD(
 
     dialogB(
         addTranslatorM,
-        [view("x").add([idEl, selectEl]).class(Class.gap), keys, help, testEl],
+        [
+            view("x")
+                .add([idEl, selectEl])
+                .style({ width: baseWidth })
+                .class(Class.gap),
+            keys,
+            help,
+            testEl,
+        ],
         () => resolve(null),
         () => {
             const nv = getV();
@@ -4154,9 +4192,9 @@ function ocrEl() {
                 } satisfies setting["离线OCR"][0]);
 
             const nameEl = input().sv(item.name);
-            const detPathEl = xPath().sv(item.detPath);
-            const recPathEl = xPath().sv(item.recPath);
-            const dicPathEl = xPath().sv(item.dicPath);
+            const detPathEl = xPath(false).sv(item.detPath);
+            const recPathEl = xPath(false).sv(item.recPath);
+            const dicPathEl = xPath(false).sv(item.dicPath);
             const scriptsEl = input()
                 .bindGet((el) => el.value.split(",").map((i) => i.trim()))
                 .bindSet((v: string[], el) => {
@@ -4180,80 +4218,88 @@ function ocrEl() {
             const downloadEl = view("y").add(
                 button(iconEl("down")).on("click", () => {
                     downloadEl.clear().add(
-                        getOcrList((i, p) => {
-                            const pro = (() => {
-                                const mel = view().style({
-                                    overflow: "hidden",
-                                    width: "300px",
-                                    height: "20px",
-                                    borderRadius: "var(--border-radius)",
-                                    backgroundColor: cssColor.bb,
-                                });
-                                const bel = view().style({
-                                    width: "100%",
-                                    height: "100%",
-                                    backgroundColor: cssColor.main,
-                                });
-                                return mel.add(bel).bindSet((v: number) => {
-                                    bel.style({
-                                        width: `${Math.floor(v * 100)}%`,
+                        getOcrList((i, p, download) => {
+                            if (download) {
+                                const pro = (() => {
+                                    const mel = view().style({
+                                        overflow: "hidden",
+                                        width: baseWidth,
+                                        height: "20px",
+                                        borderRadius: "var(--border-radius)",
+                                        backgroundColor: cssColor.bb,
                                     });
-                                });
-                            })();
-                            downloadEl.clear().add([pro]);
-                            const url = githubUrl(
-                                `xushengfeng/eSearch-OCR/releases/download/4.0.0/${ocrModels[i].url}`,
-                                "base",
-                            );
-                            try {
-                                fs.rmdirSync(p);
-                            } catch (error) {}
-                            fetch(url).then(async (res) => {
-                                if (!res.ok) {
-                                    throw new Error(
-                                        `下载失败: ${res.status} ${res.statusText}`,
-                                    );
-                                }
-                                if (!res.body) {
-                                    throw new Error("响应体中无数据");
-                                }
-
-                                const contentLength =
-                                    res.headers.get("content-length");
-                                const totalBytes = contentLength
-                                    ? Number.parseInt(contentLength)
-                                    : undefined;
-
-                                const reader = res.body.getReader();
-
-                                let downloadedBytes = 0;
-
-                                const chunks = [];
-
+                                    const bel = view().style({
+                                        width: "100%",
+                                        height: "100%",
+                                        backgroundColor: cssColor.main,
+                                    });
+                                    return mel.add(bel).bindSet((v: number) => {
+                                        bel.style({
+                                            width: `${Math.floor(v * 100)}%`,
+                                        });
+                                    });
+                                })();
+                                downloadEl.clear().add([pro]);
+                                const url = githubUrl(
+                                    `xushengfeng/eSearch-OCR/releases/download/4.0.0/${ocrModels[i].url}`,
+                                    "base",
+                                );
                                 try {
-                                    while (true) {
-                                        const { done, value } =
-                                            await reader.read();
-                                        if (done) break;
-                                        chunks.push(value);
-                                        downloadedBytes += value.length;
-                                        if (totalBytes) {
-                                            const percent =
-                                                downloadedBytes / totalBytes;
-                                            console.log(percent);
-                                            pro.sv(percent);
-                                        }
+                                    fs.rmdirSync(p);
+                                } catch (error) {}
+                                fetch(url).then(async (res) => {
+                                    if (!res.ok) {
+                                        throw new Error(
+                                            `下载失败: ${res.status} ${res.statusText}`,
+                                        );
                                     }
-                                } finally {
-                                }
+                                    if (!res.body) {
+                                        throw new Error("响应体中无数据");
+                                    }
 
-                                const buffer = await new Blob(
-                                    chunks,
-                                ).arrayBuffer();
-                                const b = Buffer.from(buffer);
-                                await unzip(b, p);
-                                console.log("end");
-                                downloadEl.clear();
+                                    const contentLength =
+                                        res.headers.get("content-length");
+                                    const totalBytes = contentLength
+                                        ? Number.parseInt(contentLength)
+                                        : undefined;
+
+                                    const reader = res.body.getReader();
+
+                                    let downloadedBytes = 0;
+
+                                    const chunks = [];
+
+                                    try {
+                                        while (true) {
+                                            const { done, value } =
+                                                await reader.read();
+                                            if (done) break;
+                                            chunks.push(value);
+                                            downloadedBytes += value.length;
+                                            if (totalBytes) {
+                                                const percent =
+                                                    downloadedBytes /
+                                                    totalBytes;
+                                                console.log(percent);
+                                                pro.sv(percent);
+                                            }
+                                        }
+                                    } finally {
+                                    }
+
+                                    const buffer = await new Blob(
+                                        chunks,
+                                    ).arrayBuffer();
+                                    const b = Buffer.from(buffer);
+                                    await unzip(b, p);
+                                    console.log("end");
+                                    downloadEl.clear();
+                                    setValue(p);
+                                });
+                            } else {
+                                setValue(p);
+                            }
+                            function setValue(p: string) {
                                 const paths = getDownloadOcrPaths(p);
                                 if (nameEl.gv === "") {
                                     nameEl.sv(t(ocrModels[i].name));
@@ -4267,7 +4313,7 @@ function ocrEl() {
                                 optimizeSpaceEl.sv(
                                     ocrModels[i].optimize?.space ?? true,
                                 );
-                            });
+                            }
                         }),
                     );
                 }),
@@ -4309,9 +4355,11 @@ function ocrEl() {
         },
     );
 
-    function getOcrList(click: (id: string, p: string) => void) {
+    function getOcrList(
+        click: (id: string, p: string, download: boolean) => void,
+    ) {
         const ocrListEl = view("y")
-            .style({ overflow: "auto", maxHeight: "200px" })
+            .style({ overflow: "auto", maxHeight: "200px", width: baseWidth })
             .class(Class.gap);
         for (const i in ocrModels) {
             const desc = p();
@@ -4323,12 +4371,12 @@ function ocrEl() {
             const downloadButton = button(exists ? "重新下载" : "下载").on(
                 "click",
                 () => {
-                    click(i, pa);
+                    click(i, pa, true);
                 },
             );
             ocrListEl.add(
                 view("y").add([
-                    view("x")
+                    view("x", "wrap")
                         .class(Class.gap)
                         .add([
                             button(ocrModels[i].name).on("click", () => {
@@ -4342,6 +4390,11 @@ function ocrEl() {
                                 );
                             }),
                             downloadButton,
+                            exists
+                                ? button("使用").on("click", () =>
+                                      click(i, pa, false),
+                                  )
+                                : null,
                         ])
                         .style({ "align-items": "center" }),
                     desc,

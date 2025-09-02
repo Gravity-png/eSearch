@@ -6,11 +6,13 @@ import store from "../../../lib/store/renderStore";
 import xtranslator from "xtranslator";
 import {
     addClass,
+    addStyle,
     button,
     ele,
     elFromId,
     type ElType,
     image,
+    initDKH,
     spacer,
     trackPoint,
     txt,
@@ -86,9 +88,12 @@ const setNewDing = (
         translation: "",
         isTranslate: false,
     });
-    const div = view().attr({ id: wid, tabIndex: 0 }).class("ding_photo");
+    const div = view()
+        .attr({ id: wid, tabIndex: 0 })
+        .style({ position: "fixed", overflow: "hidden" })
+        .class(dingPhotoClass);
     dives.push(div);
-    if (store.get("贴图.窗口.提示")) div.class("ding_photo_h");
+    if (store.get("贴图.窗口.提示")) div.class(dingPhotoHightClass);
     div.style({
         left: `${x}px`,
         top: `${y}px`,
@@ -99,18 +104,26 @@ const setNewDing = (
     const imageP = view()
         .class("img")
         .add(img)
-        .class(
-            addClass(
-                { position: "relative" },
-                { "&>*": { width: "100%", top: 0, left: 0 } },
-            ),
-        )
+        .class(imageClass)
         .class(Class.transition);
-    const toolBar = view().attr({ id: "tool_bar" });
+    const toolBar = view().style({
+        overflow: "hidden",
+        width: "100%",
+        position: "absolute",
+        zIndex: 2,
+    });
     const toolBarC = view("x")
         .attr({ id: "tool_bar_c" })
-        .style({ padding: "4px", gap: "4px", boxSizing: "border-box" })
+        .style({
+            padding: "4px",
+            gap: "4px",
+            boxSizing: "border-box",
+            width: "100%",
+            alignItems: "center",
+            userSelect: "none",
+        })
         .class(Class.glassBar)
+        .class(toolBarIClass)
         .bindSet((v: { forceShow?: boolean; show?: boolean }, el) => {
             if (v.forceShow !== undefined)
                 el.setAttribute("data-force-show", String(v.forceShow));
@@ -124,7 +137,9 @@ const setNewDing = (
                         ? "translateY(0)"
                         : "translateY(-105%)";
             }
-        });
+        })
+        .sv({ show: false })
+        .class(Class.transition);
     toolBar.add(toolBarC);
     // 顶栏
     div.el.onmouseenter = () => {
@@ -252,7 +267,7 @@ const setNewDing = (
     toolBarC.add([
         spacer(),
         view()
-            .attr({ id: "b" })
+            .class(Class.transition, toolBarButtonsClass)
             .add([
                 transB,
                 button(iconEl("free_draw"))
@@ -385,7 +400,7 @@ function minimize(el: HTMLElement) {
     setTimeout(() => {
         el.style.transition = "";
     }, 400);
-    el.classList.add("minimize");
+    el.classList.add(minimizeClass);
 }
 let ignoreEl: HTMLElement[] = [];
 function ignore(id: string, v: boolean) {
@@ -634,8 +649,6 @@ document.onmousedown = (e) => {
                 type: "move_start",
                 more: {
                     id: div.el.id,
-                    x: e.clientX,
-                    y: e.clientY,
                     dx,
                     dy,
                     d: dire(div.el, { x: e.clientX, y: e.clientY }),
@@ -648,9 +661,12 @@ document.onmousedown = (e) => {
 function mouseStart(op: DingStart) {
     windowDiv = elFromId(op.id);
     const div = windowDiv as ElType<HTMLElement>;
+    const {
+        po: { x, y },
+    } = renderSendSync("getMousePos", []);
     div.style({
-        left: `${op.x - div.el.offsetWidth * op.dx}px`,
-        top: `${op.y - div.el.offsetHeight * op.dy}px`,
+        left: `${x - div.el.offsetWidth * op.dx}px`,
+        top: `${y - div.el.offsetHeight * op.dy}px`,
     });
     oPs = [
         div.el.offsetLeft,
@@ -658,7 +674,7 @@ function mouseStart(op: DingStart) {
         div.el.offsetWidth,
         div.el.offsetHeight,
     ];
-    changing = { x: op.x, y: op.y };
+    changing = { x: x, y: y };
     direction = op.d;
     cursor(direction);
 }
@@ -934,15 +950,123 @@ function resize(
         ]);
 }
 
-const photoEl = view().attr({ id: "photo" }).addInto();
+initDKH({ pureStyle: true });
+
+addStyle({
+    body: {
+        width: "100vw",
+        height: "100vh",
+        "--hover-color": "var(--bar-hover-color) !important;",
+    },
+});
+
+const photoEl = view().style({ width: "100%", height: "100%" }).addInto();
+
+const dingPhotoClass = addClass(
+    {},
+    {
+        "&:hover": {
+            boxShadow: "var(--shadow)",
+        },
+        "&:focus": {
+            outline: "none",
+        },
+    },
+);
+const dingPhotoHightClass = addClass({ boxShadow: "var(--shadow)" }, {});
+
+const minimizeClass = addClass(
+    {
+        opacity: "0 !important",
+        // @ts-expect-error
+        pointerEvents: "none !important",
+    },
+    {},
+);
+
+const toolBarButtonsClass = addClass(
+    {},
+    {
+        "&>button": {
+            height: "32px",
+        },
+    },
+);
+
+const toolBarIClass = addClass(
+    {},
+    {
+        "&>div": {
+            display: "flex",
+            alignItems: "center",
+            width: "auto",
+        },
+    },
+);
+
+const imageClass = addClass(
+    { position: "relative", width: "100%", userSelect: "none" },
+    { "&>*": { width: "100%", top: 0, left: 0 } },
+);
 
 const dockP = store.get("ding_dock");
+
+const dockClassSmall = addClass(
+    {
+        height: "40px",
+        width: "12px",
+        left: "var(--dock-left)",
+        top: "var(--dock-top)",
+    },
+    {},
+);
+
 const dockEl = view()
     .attr({ id: "dock" })
-    .style({ left: `${dockP[0]}px`, top: `${dockP[1]}px` })
+    .bindSet((v: { x: number; y: number }, el) => {
+        dockEl.style({
+            "--dock-left": `${v.x}px`,
+            "--dock-top": `${v.y}px`,
+        });
+    })
+    .style({
+        position: "fixed",
+        zIndex: "2",
+    })
     .class(Class.screenBar)
+    .class(dockClassSmall)
     .addInto();
-const dockView = view().addInto(dockEl);
+dockEl.sv({ x: dockP[0], y: dockP[1] });
+
+const dockClassBigLeft = addClass(
+    {
+        height: "100%",
+        width: "200px",
+        top: "0",
+        left: "0",
+        borderRadius: "0",
+    },
+    {},
+);
+
+const dockClassBigRight = addClass(
+    {
+        height: "100%",
+        width: "200px",
+        top: "0",
+        left: "calc(100vw - 200px)",
+        borderRadius: "0",
+    },
+    {},
+);
+const dockView = view()
+    .style({
+        overflowX: "hidden",
+        overflowY: "auto",
+        width: "100%",
+        display: "none",
+    })
+    .addInto(dockEl);
 
 let dockShow = false;
 
@@ -952,10 +1076,7 @@ trackPoint(dockEl, {
         return { x: dockEl.el.offsetLeft, y: dockEl.el.offsetTop };
     },
     ing: (p) => {
-        dockEl.style({
-            left: `${p.x}px`,
-            top: `${p.y}px`,
-        });
+        dockEl.sv(p);
         return p;
     },
     end: (_, { moved, ingData }) => {
@@ -976,16 +1097,16 @@ const showDock = () => {
             // @ts-ignore
             document.querySelector("html").offsetWidth / 2
         ) {
-            dockEl.el.classList.remove("dock_right");
-            dockEl.el.classList.add("dock_left");
+            dockEl.el.classList.remove(dockClassBigRight);
+            dockEl.el.classList.add(dockClassBigLeft);
         } else {
-            dockEl.el.classList.remove("dock_left");
-            dockEl.el.classList.add("dock_right");
+            dockEl.el.classList.remove(dockClassBigLeft);
+            dockEl.el.classList.add(dockClassBigRight);
         }
-        dockEl.el.classList.add("dock");
         dockView.style({ display: "block" });
     } else {
-        dockEl.el.className = "";
+        dockEl.el.classList.remove(dockClassBigLeft);
+        dockEl.el.classList.remove(dockClassBigRight);
         dockEl.el.style.transition = "";
         dockView.style({ display: "none" });
     }
@@ -999,20 +1120,22 @@ function dockI() {
         let iTran_v = -1;
 
         const dockItem = view();
-        const iPhoto = image(getUrl(i), "预览").on("click", () => {
-            const div = document.getElementById(i);
-            if (div?.classList.contains("minimize")) {
-                div.style.transition = cssVar("transition");
-                setTimeout(() => {
-                    div.style.transition = "";
-                }, 400);
-                div.classList.remove("minimize");
-            } else {
-                back(i);
-            }
-            if (div) div.style.zIndex = String(toppest + 1);
-            toppest += 1;
-        });
+        const iPhoto = image(getUrl(i), "预览")
+            .style({ width: "100%" })
+            .on("click", () => {
+                const div = document.getElementById(i);
+                if (div?.classList.contains(minimizeClass)) {
+                    div.style.transition = cssVar("transition");
+                    setTimeout(() => {
+                        div.style.transition = "";
+                    }, 400);
+                    div.classList.remove(minimizeClass);
+                } else {
+                    back(i);
+                }
+                if (div) div.style.zIndex = String(toppest + 1);
+                toppest += 1;
+            });
         const iClose = view()
             .add(iconEl("close"))
             .attr({ title: "关闭" })
@@ -1038,7 +1161,11 @@ function dockI() {
             .add([
                 view("x")
                     .add([iTran, iIgnore, iClose])
-                    .class("i_bar")
+                    .style({
+                        position: "absolute",
+                        right: "8px",
+                        borderRadius: cssVar("o-padding"),
+                    })
                     .class(Class.smallSize, Class.glassBar),
                 iPhoto,
             ])

@@ -671,7 +671,7 @@ async function selectTest() {
     }
 
     const toT = await select({
-        message: "选择进行的测试",
+        message: "选择进行的测试（测试结束后退出软件以进行下一步）",
         choices: toTest.map((i) => ({ name: i.name, value: i.name })),
     });
 
@@ -708,12 +708,24 @@ async function selectTest() {
 
 try {
     fs.rmSync(testConfigTempPath, { recursive: true });
+} catch (error) {}
+
+try {
     fs.mkdirSync(testConfigTempPath, { recursive: true });
 } catch (error) {}
 
 console.log(
     `共${testResultsL.length}个测试，通过${testResultsL.filter((i) => i.state === true).length}，未通过${testResultsL.filter((i) => i.state === false).length}，将进行${testResultsL.filter((i) => i.state === null).length}个测试`,
 );
+
+const needRebuild = await confirm({
+    message: "是否需要重新构建项目？",
+    default: false,
+});
+
+if (needRebuild) {
+    execSync("npm run pack");
+}
 
 const isEdit = await confirm({
     message: "是否编辑需要测试的项目？",

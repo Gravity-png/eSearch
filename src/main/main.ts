@@ -1664,15 +1664,6 @@ mainOnReflect("dingShare", ([data]) => {
         return [];
     }
 
-    if (data.type === "move_start") {
-        const nowXY = screen.getCursorScreenPoint();
-
-        for (const [_, { display }] of dingwindowList.entries()) {
-            data.more.x = nowXY.x - display.bounds.x;
-            data.more.y = nowXY.y - display.bounds.y;
-        }
-    }
-
     return dingwindowList.entries().map(([_, { win }]) => win.webContents);
 });
 mainOn("edit_pic", ([img]) => {
@@ -1857,8 +1848,14 @@ async function createMainWindow(op: MainWinType) {
     return windowName;
 }
 
+let settingWindow: BrowserWindow | null = null;
+
 async function createSettingWindow() {
-    const settingWindow = new BrowserWindow({
+    if (settingWindow && !settingWindow.isDestroyed()) {
+        settingWindow.focus();
+        return;
+    }
+    settingWindow = new BrowserWindow({
         minWidth: 600,
         ...baseWinConfig(),
     });
@@ -1870,7 +1867,7 @@ async function createSettingWindow() {
     if (dev) settingWindow.webContents.openDevTools();
 
     settingWindow.webContents.on("did-finish-load", () => {
-        settingWindow.webContents.setZoomFactor(store.get("全局.缩放") || 1.0);
+        settingWindow?.webContents.setZoomFactor(store.get("全局.缩放") || 1.0);
     });
 }
 
