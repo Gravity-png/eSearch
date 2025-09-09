@@ -2197,6 +2197,10 @@ mainOn("feedbackFeature", ([arg]) => {
     return feedbackUrl2(arg);
 });
 
+mainOn("getScreens", () => {
+    return screen.getAllDisplays();
+});
+
 nativeTheme.on("updated", () => {
     setTray();
 });
@@ -2638,6 +2642,7 @@ const defaultSetting: setting = {
         常用语言: [],
     },
     额外截屏器: { 命令: "", 位置: "" },
+    自定义屏幕属性: [],
     连拍: {
         数: 5,
         间隔: 100,
